@@ -2,7 +2,7 @@
  * client.js
  * This script handles all frontend interactions for the Old School MK site.
  * It now manages user sessions, registration, following, and feed toggling.
- * This version includes more robust handling of the API key and UI state.
+ * This version is updated to use the new /api/login endpoint.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -131,8 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // --- View Management ---
-
     /** Switches to the main application view after login. */
     const showMainApp = async (username) => {
         currentUser = username;
@@ -142,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeMessage.textContent = `Welcome, ${currentUser}!`;
         usernameInput.value = currentUser;
         
-        await fetchApiKey(); // Fetch the key on login
+        await fetchApiKey();
         
         try {
             const res = await fetch(`/api/users/${currentUser}`);
@@ -167,17 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
         headerUserControls.classList.add('hidden');
         loginView.classList.remove('hidden');
         registerUsernameInput.value = '';
-        gumballifyBtn.disabled = true; // Disable button on logout
+        gumballifyBtn.disabled = true;
     };
 
-    // --- Event Handlers ---
-
-    /** Handles user registration. */
-    const handleRegister = async (event) => {
+    /** Handles user login/registration. */
+    const handleLogin = async (event) => {
         event.preventDefault();
         const username = registerUsernameInput.value.trim();
         try {
-            const response = await fetch('/api/register', {
+            // Use the new /api/login endpoint
+            const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username }),
@@ -209,9 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error((await response.json()).message);
             
             postForm.reset();
-            usernameInput.value = currentUser; // Keep username field populated
+            usernameInput.value = currentUser;
             showMessage(formMessage, 'Post created!', 'success');
-            await fetchAndRenderPosts(); // Refresh the feed
+            await fetchAndRenderPosts();
         } catch (error) {
             showMessage(formMessage, error.message, 'error');
         }
@@ -296,7 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /** Initializes the application */
     const init = () => {
-        // Disable Gumball-ify button by default until key is confirmed
         gumballifyBtn.disabled = true;
         gumballifyBtn.title = "Connecting...";
 
@@ -307,7 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showLoginView();
         }
 
-        registerForm.addEventListener('submit', handleRegister);
+        // Changed from 'submit' to the new handler name
+        registerForm.addEventListener('submit', handleLogin);
         postForm.addEventListener('submit', handlePostSubmit);
         logoutBtn.addEventListener('click', showLoginView);
         timelineFeed.addEventListener('click', handleFollowClick);
