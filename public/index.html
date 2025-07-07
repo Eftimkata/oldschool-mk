@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Old School MK</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body class="crt-effect">
+    <div class="container">
+        <!-- Header Section -->
+        <header class="site-header">
+            <h1 id="site-title" class="title-pixelated">Old School MK</h1>
+            <div id="header-user-controls" class="header-controls hidden">
+                <span id="welcome-message"></span>
+                <button id="logout-btn" class="btn-logout">Logout</button>
+            </div>
+        </header>
+
+        <!-- Login / Registration View -->
+        <section id="login-view" class="login-card">
+            <h2>Choose Your Username</h2>
+            <p>Pick a unique name to join the fun. This is how you'll be known!</p>
+            <form id="register-form">
+                <div class="form-group">
+                    <input type="text" id="register-username" required minlength="3" placeholder="e.g., Gumball_W">
+                </div>
+                <button type="submit" class="btn-submit">Join In!</button>
+            </form>
+            <div id="register-message" class="form-message" aria-live="polite"></div>
+        </section>
+
+        <!-- Main App View (hidden by default) -->
+        <main id="main-app-view" class="hidden">
+            <!-- Post Creation Form -->
+            <section class="post-creator-card">
+                <h2>Create a New Post</h2>
+                <form id="post-form">
+                    <div class="form-group">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" name="username" readonly>
+                    </div>
+                    <div class="form-group">
+                        <div class="label-group">
+                            <label for="text">What's on your mind?</label>
+                            <button type="button" id="gumballify-btn" class="btn-gemini">
+                                ✨ Gumball-ify
+                                <span id="gemini-spinner" class="spinner-inline hidden"></span>
+                            </button>
+                        </div>
+                        <textarea id="text" name="text" rows="4" required placeholder="Type something cool..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="image">Image URL (Optional):</label>
+                        <input type="url" id="image" name="image" placeholder="https://example.com/image.png">
+                    </div>
+                    <button type="submit" class="btn-submit">Post It!</button>
+                </form>
+                 <div id="form-message" class="form-message" aria-live="polite"></div>
+            </section>
+
+            <!-- Timeline / Feed Section -->
+            <section class="timeline">
+                <div class="feed-controls">
+                    <h2>The Feed</h2>
+                    <div class="feed-toggle">
+                        <button id="global-feed-btn" class="feed-btn active">Global</button>
+                        <button id="followed-feed-btn" class="feed-btn">Following</button>
+                    </div>
+                </div>
+                <div id="timeline-feed">
+                    <div class="loading-spinner"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="site-footer-bottom">
+            <p>&copy; 2025 eftimij's solutions. All rights reserved. Probably.</p>
+        </footer>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>
