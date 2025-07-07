@@ -1,7 +1,8 @@
 /*
  * server.js
  * This file sets up the Node.js backend using the Express framework.
- * This version includes improved error logging to help debug deployment issues.
+ * This version fixes the "Unexpected end of JSON input" error by
+ * handling cases where data files are empty.
  */
 
 const express = require('express');
@@ -23,11 +24,17 @@ app.use(express.static('public'));
 async function readData(filePath) {
     try {
         const data = await fs.readFile(filePath, 'utf8');
+        // If the file is empty, return an empty array to prevent JSON.parse error
+        if (data.trim() === '') {
+            return [];
+        }
         return JSON.parse(data);
     } catch (error) {
+        // If the file doesn't exist at all, also return an empty array
         if (error.code === 'ENOENT') {
             return [];
         }
+        // For any other errors, throw them to be caught by the route handler
         throw error;
     }
 }
@@ -76,7 +83,7 @@ app.post('/api/register', async (req, res) => {
         await writeData(USERS_FILE, users);
         res.status(201).json(newUser);
     } catch (error) {
-        console.error('[POST /api/register] Error:', error); // Detailed log
+        console.error('[POST /api/register] Error:', error);
         res.status(500).json({ message: 'Server failed to register user. Check logs.' });
     }
 });
