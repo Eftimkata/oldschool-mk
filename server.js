@@ -1,15 +1,13 @@
 /*
  * server.js
  * This file sets up the Node.js backend using the Express framework.
- * It now handles user registration, following, and serves posts
- * for both a global feed and a user-specific followed feed.
- * It also includes an endpoint to securely provide the API key to the client.
+ * This version includes improved error logging to help debug deployment issues.
  */
 
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
-require('dotenv').config(); // Use this for local development if you have a .env file
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,7 +38,7 @@ async function writeData(filePath, data) {
 
 // --- API Routes ---
 
-// GET /api/config - Securely provides the API key to the frontend
+// GET /api/config
 app.get('/api/config', (req, res) => {
     res.json({ apiKey: process.env.GEMINI_API_KEY });
 });
@@ -57,8 +55,8 @@ app.get('/api/users/:username', async (req, res) => {
             res.status(404).json({ message: 'User not found' });
         }
     } catch (error) {
-        console.error('Error fetching user:', error);
-        res.status(500).json({ message: 'Server error' });
+        console.error('[GET /api/users/:username] Error:', error);
+        res.status(500).json({ message: 'Server error while fetching user.' });
     }
 });
 
@@ -78,7 +76,8 @@ app.post('/api/register', async (req, res) => {
         await writeData(USERS_FILE, users);
         res.status(201).json(newUser);
     } catch (error) {
-        res.status(500).json({ message: 'Error registering user' });
+        console.error('[POST /api/register] Error:', error); // Detailed log
+        res.status(500).json({ message: 'Server failed to register user. Check logs.' });
     }
 });
 
@@ -88,7 +87,8 @@ app.get('/api/posts', async (req, res) => {
         const posts = await readData(POSTS_FILE);
         res.json(posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching posts' });
+        console.error('[GET /api/posts] Error:', error);
+        res.status(500).json({ message: 'Server error while fetching posts.' });
     }
 });
 
@@ -111,7 +111,8 @@ app.post('/api/posts', async (req, res) => {
         await writeData(POSTS_FILE, posts);
         res.status(201).json(newPost);
     } catch (error) {
-        res.status(500).json({ message: 'Error creating post' });
+        console.error('[POST /api/posts] Error:', error);
+        res.status(500).json({ message: 'Server failed to create post. Check logs.' });
     }
 });
 
@@ -135,7 +136,8 @@ app.post('/api/follow', async (req, res) => {
         await writeData(USERS_FILE, users);
         res.status(200).json(followerUser);
     } catch (error) {
-        res.status(500).json({ message: 'Server error during follow action' });
+        console.error('[POST /api/follow] Error:', error);
+        res.status(500).json({ message: 'Server error during follow action. Check logs.' });
     }
 });
 
