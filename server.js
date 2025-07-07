@@ -1,13 +1,13 @@
 /*
  * server.js
  * This file sets up the Node.js backend using the Express framework.
- * This version uses MongoDB for persistent data storage to solve data loss
- * on platforms like OnRender. It also includes a robust login/register flow.
+ * This version uses MongoDB for persistent data storage and includes a
+ * more robust login/registration flow to prevent empty server responses.
  */
 
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const path = require('path');
+const path =require('path');
 require('dotenv').config();
 
 const app = express();
@@ -35,7 +35,7 @@ let postsCollection;
 async function connectDB() {
     try {
         await client.connect();
-        db = client.db("oldschool_mk"); // You can name your database anything
+        db = client.db("oldschool_mk");
         usersCollection = db.collection("users");
         postsCollection = db.collection("posts");
         console.log("Successfully connected to MongoDB Atlas!");
@@ -64,14 +64,24 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ message: 'Username must be at least 3 characters long.' });
         }
 
-        // Find user or create if they don't exist (upsert)
-        const result = await usersCollection.findOneAndUpdate(
-            { username: { $regex: new RegExp(`^${username}$`, 'i') } }, // Case-insensitive find
-            { $setOnInsert: { username: username, following: [] } },
-            { returnDocument: 'after', upsert: true }
-        );
-        
-        res.status(200).json(result.value);
+        // Use a case-insensitive regex for the filter
+        const filter = { username: { $regex: new RegExp(`^${username}$`, 'i') } };
+
+        let user = await usersCollection.findOne(filter);
+
+        if (user) {
+            // User exists, return their data
+            res.status(200).json(user);
+        } else {
+            // User does not exist, create a new one
+            const newUserDocument = {
+                username: username,
+                following: []
+            };
+            await usersCollection.insertOne(newUserDocument);
+            // Return the newly created user data
+            res.status(201).json(newUserDocument);
+        }
     } catch (error) {
         console.error('[POST /api/login] Error:', error);
         res.status(500).json({ message: 'Server failed during login/registration.' });
