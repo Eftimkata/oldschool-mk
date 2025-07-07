@@ -1,47 +1,53 @@
 /*
  * server.js
  * This file sets up the Node.js backend using the Express framework.
- * This version fixes the "Unexpected end of JSON input" error by
- * handling cases where data files are empty.
+ * This version uses MongoDB for persistent data storage to solve data loss
+ * on platforms like OnRender. It also includes a robust login/register flow.
  */
 
 const express = require('express');
-const fs = require('fs').promises;
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const POSTS_FILE = path.join(__dirname, 'posts.json');
-const USERS_FILE = path.join(__dirname, 'users.json');
+
+// --- Database Connection ---
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+    console.error("FATAL ERROR: MONGODB_URI environment variable is not set.");
+    process.exit(1);
+}
+
+const client = new MongoClient(mongoUri, {
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    }
+});
+
+let db;
+let usersCollection;
+let postsCollection;
+
+async function connectDB() {
+    try {
+        await client.connect();
+        db = client.db("oldschool_mk"); // You can name your database anything
+        usersCollection = db.collection("users");
+        postsCollection = db.collection("posts");
+        console.log("Successfully connected to MongoDB Atlas!");
+    } catch (error) {
+        console.error("Failed to connect to MongoDB", error);
+        process.exit(1);
+    }
+}
 
 // Middleware
 app.use(express.json());
 app.use(express.static('public'));
-
-// --- Helper Functions for Data Persistence ---
-
-async function readData(filePath) {
-    try {
-        const data = await fs.readFile(filePath, 'utf8');
-        // If the file is empty, return an empty array to prevent JSON.parse error
-        if (data.trim() === '') {
-            return [];
-        }
-        return JSON.parse(data);
-    } catch (error) {
-        // If the file doesn't exist at all, also return an empty array
-        if (error.code === 'ENOENT') {
-            return [];
-        }
-        // For any other errors, throw them to be caught by the route handler
-        throw error;
-    }
-}
-
-async function writeData(filePath, data) {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
-}
 
 // --- API Routes ---
 
@@ -50,12 +56,34 @@ app.get('/api/config', (req, res) => {
     res.json({ apiKey: process.env.GEMINI_API_KEY });
 });
 
+// POST /api/login - Handles both login and registration
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username || username.length < 3) {
+            return res.status(400).json({ message: 'Username must be at least 3 characters long.' });
+        }
+
+        // Find user or create if they don't exist (upsert)
+        const result = await usersCollection.findOneAndUpdate(
+            { username: { $regex: new RegExp(`^${username}$`, 'i') } }, // Case-insensitive find
+            { $setOnInsert: { username: username, following: [] } },
+            { returnDocument: 'after', upsert: true }
+        );
+        
+        res.status(200).json(result.value);
+    } catch (error) {
+        console.error('[POST /api/login] Error:', error);
+        res.status(500).json({ message: 'Server failed during login/registration.' });
+    }
+});
+
+
 // GET /api/users/:username
 app.get('/api/users/:username', async (req, res) => {
     try {
         const { username } = req.params;
-        const users = await readData(USERS_FILE);
-        const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        const user = await usersCollection.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
         if (user) {
             res.json(user);
         } else {
@@ -67,32 +95,11 @@ app.get('/api/users/:username', async (req, res) => {
     }
 });
 
-// POST /api/register
-app.post('/api/register', async (req, res) => {
-    try {
-        const { username } = req.body;
-        if (!username || username.length < 3) {
-            return res.status(400).json({ message: 'Username must be at least 3 characters long.' });
-        }
-        const users = await readData(USERS_FILE);
-        if (users.some(user => user.username.toLowerCase() === username.toLowerCase())) {
-            return res.status(409).json({ message: 'Username is already taken.' });
-        }
-        const newUser = { username, following: [] };
-        users.push(newUser);
-        await writeData(USERS_FILE, users);
-        res.status(201).json(newUser);
-    } catch (error) {
-        console.error('[POST /api/register] Error:', error);
-        res.status(500).json({ message: 'Server failed to register user. Check logs.' });
-    }
-});
-
 // GET /api/posts
 app.get('/api/posts', async (req, res) => {
     try {
-        const posts = await readData(POSTS_FILE);
-        res.json(posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+        const posts = await postsCollection.find().sort({ timestamp: -1 }).toArray();
+        res.json(posts);
     } catch (error) {
         console.error('[GET /api/posts] Error:', error);
         res.status(500).json({ message: 'Server error while fetching posts.' });
@@ -107,19 +114,16 @@ app.post('/api/posts', async (req, res) => {
             return res.status(400).json({ message: 'Username and text are required.' });
         }
         const newPost = {
-            id: Date.now(),
             username,
             text,
             image: image || null,
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(),
         };
-        const posts = await readData(POSTS_FILE);
-        posts.push(newPost);
-        await writeData(POSTS_FILE, posts);
-        res.status(201).json(newPost);
+        const result = await postsCollection.insertOne(newPost);
+        res.status(201).json({ ...newPost, _id: result.insertedId });
     } catch (error) {
         console.error('[POST /api/posts] Error:', error);
-        res.status(500).json({ message: 'Server failed to create post. Check logs.' });
+        res.status(500).json({ message: 'Server failed to create post.' });
     }
 });
 
@@ -130,25 +134,37 @@ app.post('/api/follow', async (req, res) => {
         if (!follower || !userToFollow) {
             return res.status(400).json({ message: 'Required fields missing.' });
         }
-        const users = await readData(USERS_FILE);
-        const followerUser = users.find(u => u.username === follower);
+
+        const followerUser = await usersCollection.findOne({ username: follower });
         if (!followerUser) {
             return res.status(404).json({ message: 'Follower not found.' });
         }
+
+        let updateOperation;
         if (followerUser.following.includes(userToFollow)) {
-            followerUser.following = followerUser.following.filter(name => name !== userToFollow);
+            // Unfollow: remove from array
+            updateOperation = { $pull: { following: userToFollow } };
         } else {
-            followerUser.following.push(userToFollow);
+            // Follow: add to array
+            updateOperation = { $addToSet: { following: userToFollow } }; // $addToSet prevents duplicates
         }
-        await writeData(USERS_FILE, users);
-        res.status(200).json(followerUser);
+
+        const result = await usersCollection.findOneAndUpdate(
+            { username: follower },
+            updateOperation,
+            { returnDocument: 'after' }
+        );
+
+        res.status(200).json(result.value);
     } catch (error) {
         console.error('[POST /api/follow] Error:', error);
-        res.status(500).json({ message: 'Server error during follow action. Check logs.' });
+        res.status(500).json({ message: 'Server error during follow action.' });
     }
 });
 
-// Start the server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+// Start the server after connecting to the DB
+connectDB().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
 });
