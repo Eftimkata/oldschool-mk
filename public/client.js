@@ -1,23 +1,24 @@
 /*
  * client.js
- * This script handles all frontend interactions for the Old School MK site.
- * It now manages user sessions, registration, following, and feed toggling.
- * This version is updated to use the new /api/login endpoint.
+ * Version 0.0.alpha-2
+ * Adds logic for profile pages (viewing a user's posts) and liking posts.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- State Management ---
     let currentUser = null;
     let followingList = [];
-    let currentFeed = 'global'; // 'global' or 'followed'
-    let geminiApiKey = null; // To be fetched from server
+    let currentView = 'feed'; // 'feed' or 'profile'
+    let profileUsername = ''; // The user whose profile is being viewed
+    let currentFeedType = 'global'; // 'global' or 'followed'
+    let geminiApiKey = null;
 
     // --- DOM Element References ---
     const loginView = document.getElementById('login-view');
     const mainAppView = document.getElementById('main-app-view');
-    const registerForm = document.getElementById('register-form');
-    const registerUsernameInput = document.getElementById('register-username');
-    const registerMessage = document.getElementById('register-message');
+    const loginForm = document.getElementById('login-form');
+    const loginUsernameInput = document.getElementById('login-username');
+    const loginMessage = document.getElementById('login-message');
     const postForm = document.getElementById('post-form');
     const timelineFeed = document.getElementById('timeline-feed');
     const formMessage = document.getElementById('form-message');
@@ -27,37 +28,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutBtn = document.getElementById('logout-btn');
     const globalFeedBtn = document.getElementById('global-feed-btn');
     const followedFeedBtn = document.getElementById('followed-feed-btn');
+    const feedToggleContainer = document.querySelector('.feed-toggle');
+    const feedTitle = document.getElementById('feed-title');
+    const backToFeedBtn = document.getElementById('back-to-feed-btn');
     const gumballifyBtn = document.getElementById('gumballify-btn');
     const postTextarea = document.getElementById('text');
     const geminiSpinner = document.getElementById('gemini-spinner');
 
     // --- API & Utility Functions ---
 
-    /** Fetches the Gemini API Key from the server and updates UI accordingly. */
     const fetchApiKey = async () => {
         try {
             const response = await fetch('/api/config');
             if (!response.ok) throw new Error('Could not fetch server configuration.');
-            
             const config = await response.json();
             geminiApiKey = config.apiKey;
-
             if (geminiApiKey) {
                 gumballifyBtn.disabled = false;
                 gumballifyBtn.title = "Rewrite your post in Gumball's style!";
             } else {
-                console.warn("Gumball-ify feature disabled: API key not found on server.");
                 gumballifyBtn.disabled = true;
-                gumballifyBtn.title = "This feature is not available. The server admin needs to set an API key.";
+                gumballifyBtn.title = "This feature is not available.";
             }
         } catch (error) {
             console.error("Could not fetch API key.", error);
             gumballifyBtn.disabled = true;
-            gumballifyBtn.title = "Could not connect to the server to enable this feature.";
         }
     };
 
-    /** Displays a message in a specified message area. */
     const showMessage = (element, message, type) => {
         element.textContent = message;
         element.className = `form-message ${type}`;
@@ -69,19 +67,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 4000);
     };
 
-    /** Formats an ISO date string. */
     const formatTimestamp = (isoString) => new Date(isoString).toLocaleString('en-US', {
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
     });
 
-    /** Creates the HTML for a single post. */
     const createPostElement = (post) => {
         const postCard = document.createElement('div');
         postCard.className = 'post-card';
-        postCard.dataset.author = post.username;
+        postCard.dataset.postId = post._id;
 
         const isOwnPost = post.username === currentUser;
         const isFollowing = followingList.includes(post.username);
+        const hasLiked = post.likes.includes(currentUser);
 
         const followButtonHtml = isOwnPost ? '' : `
             <button class="btn-follow ${isFollowing ? 'following' : ''}" data-username="${post.username}">
@@ -94,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
         postCard.innerHTML = `
             <div class="post-header">
                 <div class="post-user-info">
-                    <span class="post-username">${post.username}</span>
+                    <span class="post-username" data-username="${post.username}">${post.username}</span>
                     ${followButtonHtml}
                 </div>
                 <span class="post-timestamp">${formatTimestamp(post.timestamp)}</span>
@@ -102,36 +99,50 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="post-content">
                 <p>${safeText.innerHTML.replace(/\n/g, '<br>')}</p>
                 ${post.image ? `<img src="${post.image}" alt="User post image" class="post-image" onerror="this.style.display='none'">` : ''}
-            </div>`;
+            </div>
+            <div class="post-actions">
+                <button class="btn-like ${hasLiked ? 'liked' : ''}" data-post-id="${post._id}">
+                    <span class="like-icon">♥</span>
+                    <span class="like-text">${hasLiked ? 'Liked' : 'Like'}</span>
+                </button>
+                <span class="like-count">${post.likes.length}</span>
+            </div>
+        `;
         return postCard;
     };
 
-    /** Fetches posts and renders them to the timeline. */
     const fetchAndRenderPosts = async () => {
         timelineFeed.innerHTML = '<div class="loading-spinner"></div>';
         try {
-            const postResponse = await fetch('/api/posts');
-            if (!postResponse.ok) throw new Error('Could not fetch posts.');
-            
-            let posts = await postResponse.json();
-            
-            if (currentFeed === 'followed') {
+            let url;
+            if (currentView === 'profile') {
+                url = `/api/posts/user/${profileUsername}`;
+            } else {
+                url = '/api/posts'; // Fetch all for client-side filtering of 'followed'
+            }
+
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Could not fetch posts.');
+            let posts = await response.json();
+
+            if (currentView === 'feed' && currentFeedType === 'followed') {
                 posts = posts.filter(post => followingList.includes(post.username) || post.username === currentUser);
             }
 
             timelineFeed.innerHTML = '';
             if (posts.length === 0) {
-                timelineFeed.innerHTML = `<p>Nothing to see here! ${currentFeed === 'followed' ? 'Follow some people to see their posts.' : 'Be the first to post!'}</p>`;
+                timelineFeed.innerHTML = `<p>Nothing to see here!</p>`;
             } else {
                 posts.forEach(post => timelineFeed.appendChild(createPostElement(post)));
             }
         } catch (error) {
             console.error('Failed to fetch posts:', error);
-            timelineFeed.innerHTML = '<p style="color: var(--error-color);">Could not load the feed. Please try refreshing.</p>';
+            timelineFeed.innerHTML = '<p style="color: var(--error-color);">Could not load the feed.</p>';
         }
     };
 
-    /** Switches to the main application view after login. */
+    // --- View Management ---
+
     const showMainApp = async (username) => {
         currentUser = username;
         loginView.classList.add('hidden');
@@ -139,23 +150,17 @@ document.addEventListener('DOMContentLoaded', () => {
         headerUserControls.classList.remove('hidden');
         welcomeMessage.textContent = `Welcome, ${currentUser}!`;
         usernameInput.value = currentUser;
-        
         await fetchApiKey();
-        
         try {
             const res = await fetch(`/api/users/${currentUser}`);
             if (!res.ok) throw new Error('User data not found.');
-            const userData = await res.json();
-            followingList = userData.following || [];
+            followingList = (await res.json()).following || [];
         } catch (error) {
-            console.error("Could not fetch user's following list", error);
             followingList = [];
         }
-
-        await fetchAndRenderPosts();
+        await showFeedView();
     };
 
-    /** Switches to the login view. */
     const showLoginView = () => {
         currentUser = null;
         followingList = [];
@@ -164,16 +169,34 @@ document.addEventListener('DOMContentLoaded', () => {
         mainAppView.classList.add('hidden');
         headerUserControls.classList.add('hidden');
         loginView.classList.remove('hidden');
-        registerUsernameInput.value = '';
+        loginUsernameInput.value = '';
         gumballifyBtn.disabled = true;
     };
 
-    /** Handles user login/registration. */
+    const showFeedView = async () => {
+        currentView = 'feed';
+        profileUsername = '';
+        feedTitle.textContent = 'The Feed';
+        feedToggleContainer.classList.remove('hidden');
+        backToFeedBtn.classList.add('hidden');
+        await fetchAndRenderPosts();
+    };
+
+    const showProfileView = async (username) => {
+        currentView = 'profile';
+        profileUsername = username;
+        feedTitle.textContent = `Posts by ${username}`;
+        feedToggleContainer.classList.add('hidden');
+        backToFeedBtn.classList.remove('hidden');
+        await fetchAndRenderPosts();
+    };
+
+    // --- Event Handlers ---
+
     const handleLogin = async (event) => {
         event.preventDefault();
-        const username = registerUsernameInput.value.trim();
+        const username = loginUsernameInput.value.trim();
         try {
-            // Use the new /api/login endpoint
             const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -181,15 +204,13 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message);
-            
             localStorage.setItem('oldSchoolMKUsername', data.username);
             await showMainApp(data.username);
         } catch (error) {
-            showMessage(registerMessage, error.message, 'error');
+            showMessage(loginMessage, error.message, 'error');
         }
     };
 
-    /** Handles new post submission. */
     const handlePostSubmit = async (event) => {
         event.preventDefault();
         const postData = {
@@ -204,7 +225,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(postData),
             });
             if (!response.ok) throw new Error((await response.json()).message);
-            
             postForm.reset();
             usernameInput.value = currentUser;
             showMessage(formMessage, 'Post created!', 'success');
@@ -214,11 +234,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /** Handles follow/unfollow clicks. */
-    const handleFollowClick = async (event) => {
-        if (!event.target.matches('.btn-follow')) return;
-        const userToFollow = event.target.dataset.username;
-        
+    const handleTimelineClick = (event) => {
+        const target = event.target;
+        if (target.matches('.post-username')) {
+            const username = target.dataset.username;
+            showProfileView(username);
+        } else if (target.closest('.btn-follow')) {
+            handleFollowClick(target.closest('.btn-follow'));
+        } else if (target.closest('.btn-like')) {
+            handleLikeClick(target.closest('.btn-like'));
+        }
+    };
+
+    const handleFollowClick = async (button) => {
+        const userToFollow = button.dataset.username;
         try {
             const response = await fetch('/api/follow', {
                 method: 'POST',
@@ -226,26 +255,57 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ follower: currentUser, userToFollow }),
             });
             if (!response.ok) throw new Error((await response.json()).message);
-            
             const updatedUser = await response.json();
             followingList = updatedUser.following;
-
             document.querySelectorAll(`.btn-follow[data-username="${userToFollow}"]`).forEach(btn => {
                 const isFollowing = followingList.includes(userToFollow);
                 btn.textContent = isFollowing ? 'Following' : 'Follow';
                 btn.classList.toggle('following', isFollowing);
             });
-
-            if (currentFeed === 'followed') {
+            if (currentView === 'feed' && currentFeedType === 'followed') {
                 await fetchAndRenderPosts();
             }
         } catch (error) {
-            console.error("Follow error:", error);
             showMessage(formMessage, 'Could not complete follow action.', 'error');
         }
     };
-    
-    /** Calls Gemini API to rewrite text. */
+
+    const handleLikeClick = async (button) => {
+        const postId = button.dataset.postId;
+        try {
+            const response = await fetch(`/api/posts/${postId}/like`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUser }),
+            });
+            if (!response.ok) throw new Error('Failed to like post.');
+            const updatedPost = await response.json();
+            
+            // Update the UI for the specific post
+            const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+            if (postCard) {
+                const likeButton = postCard.querySelector('.btn-like');
+                const likeCount = postCard.querySelector('.like-count');
+                const likeText = postCard.querySelector('.like-text');
+                const hasLiked = updatedPost.likes.includes(currentUser);
+
+                likeButton.classList.toggle('liked', hasLiked);
+                likeText.textContent = hasLiked ? 'Liked' : 'Like';
+                likeCount.textContent = updatedPost.likes.length;
+            }
+        } catch (error) {
+            console.error('Like error:', error);
+        }
+    };
+
+    const handleFeedTypeToggle = async (feedType) => {
+        if (currentFeedType === feedType) return;
+        currentFeedType = feedType;
+        globalFeedBtn.classList.toggle('active', feedType === 'global');
+        followedFeedBtn.classList.toggle('active', feedType === 'followed');
+        await fetchAndRenderPosts();
+    };
+
     const handleGumballifyClick = async () => {
         if (!geminiApiKey) {
             showMessage(formMessage, 'Gumball-ify feature is not available.', 'error');
@@ -270,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error(`Gemini API error! Status: ${response.status}`);
             const result = await response.json();
             if (!result.candidates || result.candidates.length === 0) {
-                 throw new Error("The AI returned no suggestions. It might be too busy causing chaos!");
+                 throw new Error("The AI returned no suggestions.");
             }
             const text = result.candidates[0].content.parts[0].text;
             postTextarea.value = text.trim();
@@ -282,34 +342,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /** Handles switching between global and followed feeds. */
-    const handleFeedToggle = async (feedType) => {
-        if (currentFeed === feedType) return;
-        currentFeed = feedType;
-        globalFeedBtn.classList.toggle('active', feedType === 'global');
-        followedFeedBtn.classList.toggle('active', feedType === 'followed');
-        await fetchAndRenderPosts();
-    };
-
-    /** Initializes the application */
     const init = () => {
         gumballifyBtn.disabled = true;
         gumballifyBtn.title = "Connecting...";
-
         const savedUsername = localStorage.getItem('oldSchoolMKUsername');
         if (savedUsername) {
             showMainApp(savedUsername);
         } else {
             showLoginView();
         }
-
-        // Changed from 'submit' to the new handler name
-        registerForm.addEventListener('submit', handleLogin);
+        loginForm.addEventListener('submit', handleLogin);
         postForm.addEventListener('submit', handlePostSubmit);
         logoutBtn.addEventListener('click', showLoginView);
-        timelineFeed.addEventListener('click', handleFollowClick);
-        globalFeedBtn.addEventListener('click', () => handleFeedToggle('global'));
-        followedFeedBtn.addEventListener('click', () => handleFeedToggle('followed'));
+        timelineFeed.addEventListener('click', handleTimelineClick);
+        globalFeedBtn.addEventListener('click', () => handleFeedTypeToggle('global'));
+        followedFeedBtn.addEventListener('click', () => handleFeedTypeToggle('followed'));
+        backToFeedBtn.addEventListener('click', showFeedView);
         gumballifyBtn.addEventListener('click', handleGumballifyClick);
     };
 
