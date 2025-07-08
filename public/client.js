@@ -1,24 +1,30 @@
 /*
  * client.js
- * Version 0.0.alpha-2
- * Adds logic for profile pages (viewing a user's posts) and liking posts.
+ * Version 0.0.3-alpha
+ * Implements the new login/registration flow with password support.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- State Management ---
     let currentUser = null;
     let followingList = [];
-    let currentView = 'feed'; // 'feed' or 'profile'
-    let profileUsername = ''; // The user whose profile is being viewed
-    let currentFeedType = 'global'; // 'global' or 'followed'
+    let currentView = 'feed';
+    let profileUsername = '';
+    let currentFeedType = 'global';
     let geminiApiKey = null;
+    let isRegisterMode = false; // To track if the auth form is for login or register
 
     // --- DOM Element References ---
     const loginView = document.getElementById('login-view');
     const mainAppView = document.getElementById('main-app-view');
-    const loginForm = document.getElementById('login-form');
-    const loginUsernameInput = document.getElementById('login-username');
-    const loginMessage = document.getElementById('login-message');
+    const authForm = document.getElementById('auth-form');
+    const authUsernameInput = document.getElementById('auth-username');
+    const authPasswordInput = document.getElementById('auth-password');
+    const authMessage = document.getElementById('auth-message');
+    const authTitle = document.getElementById('auth-title');
+    const authSubmitBtn = document.getElementById('auth-submit-btn');
+    const authToggleText = document.getElementById('auth-toggle-text');
+    const authToggleLink = document.getElementById('auth-toggle-link');
     const postForm = document.getElementById('post-form');
     const timelineFeed = document.getElementById('timeline-feed');
     const formMessage = document.getElementById('form-message');
@@ -118,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentView === 'profile') {
                 url = `/api/posts/user/${profileUsername}`;
             } else {
-                url = '/api/posts'; // Fetch all for client-side filtering of 'followed'
+                url = '/api/posts';
             }
 
             const response = await fetch(url);
@@ -169,7 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mainAppView.classList.add('hidden');
         headerUserControls.classList.add('hidden');
         loginView.classList.remove('hidden');
-        loginUsernameInput.value = '';
+        authUsernameInput.value = '';
+        authPasswordInput.value = '';
         gumballifyBtn.disabled = true;
     };
 
@@ -191,23 +198,44 @@ document.addEventListener('DOMContentLoaded', () => {
         await fetchAndRenderPosts();
     };
 
+    const toggleAuthMode = () => {
+        isRegisterMode = !isRegisterMode;
+        authForm.reset();
+        authMessage.className = 'form-message';
+        if (isRegisterMode) {
+            authTitle.textContent = 'Register';
+            authSubmitBtn.textContent = 'Register';
+            authToggleText.textContent = 'Already have an account?';
+            authToggleLink.textContent = 'Login';
+        } else {
+            authTitle.textContent = 'Login';
+            authSubmitBtn.textContent = 'Login';
+            authToggleText.textContent = 'Need an account?';
+            authToggleLink.textContent = 'Register';
+        }
+    };
+
     // --- Event Handlers ---
 
-    const handleLogin = async (event) => {
+    const handleAuthSubmit = async (event) => {
         event.preventDefault();
-        const username = loginUsernameInput.value.trim();
+        const username = authUsernameInput.value.trim();
+        const password = authPasswordInput.value.trim();
+        const endpoint = isRegisterMode ? '/api/register' : '/api/login';
+
         try {
-            const response = await fetch('/api/login', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username }),
+                body: JSON.stringify({ username, password }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message);
+            
             localStorage.setItem('oldSchoolMKUsername', data.username);
             await showMainApp(data.username);
         } catch (error) {
-            showMessage(loginMessage, error.message, 'error');
+            showMessage(authMessage, error.message, 'error');
         }
     };
 
@@ -281,7 +309,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Failed to like post.');
             const updatedPost = await response.json();
             
-            // Update the UI for the specific post
             const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
             if (postCard) {
                 const likeButton = postCard.querySelector('.btn-like');
@@ -351,7 +378,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             showLoginView();
         }
-        loginForm.addEventListener('submit', handleLogin);
+        authForm.addEventListener('submit', handleAuthSubmit);
+        authToggleLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleAuthMode();
+        });
         postForm.addEventListener('submit', handlePostSubmit);
         logoutBtn.addEventListener('click', showLoginView);
         timelineFeed.addEventListener('click', handleTimelineClick);
