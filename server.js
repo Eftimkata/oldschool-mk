@@ -1,8 +1,7 @@
 /*
  * server.js
  * Version 0.0.alpha-2
- * This version adds endpoints for profile pages (getting posts by a specific user)
- * and for liking/unliking posts.
+ * This version adds extra logging to the post fetching route to help debug deployment issues.
  */
 
 const express = require('express');
@@ -50,7 +49,7 @@ app.get('/api/config', (req, res) => {
     res.json({ apiKey: process.env.GEMINI_API_KEY });
 });
 
-// POST /api/login - Handles both login and registration
+// POST /api/login
 app.post('/api/login', async (req, res) => {
     try {
         const { username } = req.body;
@@ -71,7 +70,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// GET /api/users/:username - Get a single user's data
+// GET /api/users/:username
 app.get('/api/users/:username', async (req, res) => {
     try {
         const { username } = req.params;
@@ -86,15 +85,17 @@ app.get('/api/users/:username', async (req, res) => {
 // GET /api/posts - Get all posts for the global feed
 app.get('/api/posts', async (req, res) => {
     try {
+        console.log("Attempting to fetch posts from database..."); // Extra log
         const posts = await postsCollection.find().sort({ timestamp: -1 }).toArray();
+        console.log(`Successfully fetched ${posts.length} posts.`); // Extra log
         res.json(posts);
     } catch (error) {
-        console.error('[GET /api/posts] Error:', error);
+        console.error('[GET /api/posts] Error:', error); // Crucial log
         res.status(500).json({ message: 'Server error while fetching posts.' });
     }
 });
 
-// NEW: GET /api/posts/user/:username - Get all posts for a specific user
+// GET /api/posts/user/:username
 app.get('/api/posts/user/:username', async (req, res) => {
     try {
         const { username } = req.params;
@@ -106,7 +107,7 @@ app.get('/api/posts/user/:username', async (req, res) => {
     }
 });
 
-// POST /api/posts - Create a new post
+// POST /api/posts
 app.post('/api/posts', async (req, res) => {
     try {
         const { username, text, image } = req.body;
@@ -118,7 +119,7 @@ app.post('/api/posts', async (req, res) => {
             text,
             image: image || null,
             timestamp: new Date(),
-            likes: [], // Initialize likes as an empty array
+            likes: [],
         };
         const result = await postsCollection.insertOne(newPost);
         res.status(201).json({ ...newPost, _id: result.insertedId });
@@ -128,35 +129,29 @@ app.post('/api/posts', async (req, res) => {
     }
 });
 
-// NEW: POST /api/posts/:id/like - Like or unlike a post
+// POST /api/posts/:id/like
 app.post('/api/posts/:id/like', async (req, res) => {
     try {
         const { id } = req.params;
-        const { username } = req.body; // The user who is performing the like
+        const { username } = req.body;
         if (!username) {
             return res.status(400).json({ message: 'Username is required to like a post.' });
         }
-
         const post = await postsCollection.findOne({ _id: new ObjectId(id) });
         if (!post) {
             return res.status(404).json({ message: 'Post not found.' });
         }
-
         let updateOperation;
         if (post.likes.includes(username)) {
-            // User has already liked, so unlike
             updateOperation = { $pull: { likes: username } };
         } else {
-            // User has not liked, so like
             updateOperation = { $addToSet: { likes: username } };
         }
-
         const result = await postsCollection.findOneAndUpdate(
             { _id: new ObjectId(id) },
             updateOperation,
             { returnDocument: 'after' }
         );
-
         res.status(200).json(result.value);
     } catch (error) {
         console.error('[POST /api/posts/:id/like] Error:', error);
@@ -165,7 +160,7 @@ app.post('/api/posts/:id/like', async (req, res) => {
 });
 
 
-// POST /api/follow - Follow or unfollow a user
+// POST /api/follow
 app.post('/api/follow', async (req, res) => {
     try {
         const { follower, userToFollow } = req.body;
