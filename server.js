@@ -1,7 +1,8 @@
 /*
  * server.js
  * Version 0.0.alpha-2
- * This version adds extra logging to the post fetching route to help debug deployment issues.
+ * This version fixes a data serialization bug by ensuring all MongoDB ObjectIds
+ * are converted to strings before being sent in the API response.
  */
 
 const express = require('express');
@@ -85,12 +86,12 @@ app.get('/api/users/:username', async (req, res) => {
 // GET /api/posts - Get all posts for the global feed
 app.get('/api/posts', async (req, res) => {
     try {
-        console.log("Attempting to fetch posts from database..."); // Extra log
+        console.log("Attempting to fetch posts from database...");
         const posts = await postsCollection.find().sort({ timestamp: -1 }).toArray();
-        console.log(`Successfully fetched ${posts.length} posts.`); // Extra log
+        console.log(`Successfully fetched ${posts.length} posts.`);
         res.json(posts);
     } catch (error) {
-        console.error('[GET /api/posts] Error:', error); // Crucial log
+        console.error('[GET /api/posts] Error:', error);
         res.status(500).json({ message: 'Server error while fetching posts.' });
     }
 });
@@ -101,7 +102,8 @@ app.get('/api/posts/user/:username', async (req, res) => {
         const { username } = req.params;
         const posts = await postsCollection.find({ username: username }).sort({ timestamp: -1 }).toArray();
         res.json(posts);
-    } catch (error) {
+    } catch (error)
+        {
         console.error('[GET /api/posts/user/:username] Error:', error);
         res.status(500).json({ message: 'Server error while fetching user posts.' });
     }
@@ -122,7 +124,9 @@ app.post('/api/posts', async (req, res) => {
             likes: [],
         };
         const result = await postsCollection.insertOne(newPost);
-        res.status(201).json({ ...newPost, _id: result.insertedId });
+        // Ensure the returned post has a string ID
+        const createdPost = { ...newPost, _id: result.insertedId.toString() };
+        res.status(201).json(createdPost);
     } catch (error) {
         console.error('[POST /api/posts] Error:', error);
         res.status(500).json({ message: 'Server failed to create post.' });
@@ -137,21 +141,30 @@ app.post('/api/posts/:id/like', async (req, res) => {
         if (!username) {
             return res.status(400).json({ message: 'Username is required to like a post.' });
         }
+
+        // Validate the ID format before creating an ObjectId
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid post ID format.' });
+        }
+
         const post = await postsCollection.findOne({ _id: new ObjectId(id) });
         if (!post) {
             return res.status(404).json({ message: 'Post not found.' });
         }
+
         let updateOperation;
         if (post.likes.includes(username)) {
             updateOperation = { $pull: { likes: username } };
         } else {
             updateOperation = { $addToSet: { likes: username } };
         }
+
         const result = await postsCollection.findOneAndUpdate(
             { _id: new ObjectId(id) },
             updateOperation,
             { returnDocument: 'after' }
         );
+
         res.status(200).json(result.value);
     } catch (error) {
         console.error('[POST /api/posts/:id/like] Error:', error);
@@ -165,6 +178,9 @@ app.post('/api/follow', async (req, res) => {
     try {
         const { follower, userToFollow } = req.body;
         const followerUser = await usersCollection.findOne({ username: follower });
+        if (!followerUser) {
+             return res.status(404).json({ message: 'Follower user not found.' });
+        }
         let updateOperation;
         if (followerUser.following.includes(userToFollow)) {
             updateOperation = { $pull: { following: userToFollow } };
