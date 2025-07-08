@@ -24,13 +24,13 @@
         <section id="login-view" class="login-card">
             <h2>Choose Your Username</h2>
             <p>Pick a unique name to join the fun. This is how you'll be known!</p>
-            <form id="register-form">
+            <form id="login-form">
                 <div class="form-group">
-                    <input type="text" id="register-username" required minlength="3" placeholder="e.g., Gumball_W">
+                    <input type="text" id="login-username" required minlength="3" placeholder="e.g., Gumball_W">
                 </div>
                 <button type="submit" class="btn-submit">Join In!</button>
             </form>
-            <div id="register-message" class="form-message" aria-live="polite"></div>
+            <div id="login-message" class="form-message" aria-live="polite"></div>
         </section>
 
         <!-- Main App View (hidden by default) -->
@@ -65,12 +65,13 @@
             <!-- Timeline / Feed Section -->
             <section class="timeline">
                 <div class="feed-controls">
-                    <h2>The Feed</h2>
+                    <h2 id="feed-title">The Feed</h2>
                     <div class="feed-toggle">
                         <button id="global-feed-btn" class="feed-btn active">Global</button>
                         <button id="followed-feed-btn" class="feed-btn">Following</button>
                     </div>
                 </div>
+                 <button id="back-to-feed-btn" class="btn-back hidden">‹ Back to Feed</button>
                 <div id="timeline-feed">
                     <div class="loading-spinner"></div>
                 </div>
@@ -79,7 +80,7 @@
 
         <!-- Footer -->
         <footer class="site-footer-bottom">
-            <p>&copy; 2025 eftimij's solutions. All rights reserved. Probably.</p>
+            <p>&copy; 2025 Old School MK. All rights reserved. Probably.</p>
         </footer>
     </div>
 
