@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Old School MK</title>
+    <meta name="description" content="Old School MK is a retro-style social media website inspired by the early days of the internet. Create posts, follow users, and join a fun, old-school community.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,15 +23,25 @@
 
         <!-- Login / Registration View -->
         <section id="login-view" class="login-card">
-            <h2>Choose Your Username</h2>
-            <p>Pick a unique name to join the fun. This is how you'll be known!</p>
-            <form id="login-form">
+            <form id="auth-form">
+                <h2 id="auth-title">Login</h2>
                 <div class="form-group">
-                    <input type="text" id="login-username" required minlength="3" placeholder="e.g., Gumball_W">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" required minlength="3" placeholder="e.g., Gumball_W">
                 </div>
-                <button type="submit" class="btn-submit">Join In!</button>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" required minlength="6" placeholder="Min. 6 characters">
+                </div>
+                <button type="submit" id="auth-submit-btn" class="btn-submit">Login</button>
             </form>
-            <div id="login-message" class="form-message" aria-live="polite"></div>
+            <div id="auth-message" class="form-message" aria-live="polite"></div>
+            <div class="auth-toggle">
+                <p>
+                    <span id="auth-toggle-text">Need an account?</span>
+                    <a href="#" id="auth-toggle-link">Register</a>
+                </p>
+            </div>
         </section>
 
         <!-- Main App View (hidden by default) -->
