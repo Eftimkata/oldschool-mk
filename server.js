@@ -2,7 +2,8 @@
  * server.js
  * Version 0.0.alpha-2
  * This version fixes a data serialization bug by ensuring all MongoDB ObjectIds
- * are converted to strings before being sent in the API response.
+ * are converted to strings and that all posts have a 'likes' array before being
+ * sent in the API response. This handles legacy data gracefully.
  */
 
 const express = require('express');
@@ -89,8 +90,14 @@ app.get('/api/posts', async (req, res) => {
         console.log("Attempting to fetch posts from database...");
         const postsArray = await postsCollection.find().sort({ timestamp: -1 }).toArray();
         console.log(`Successfully fetched ${postsArray.length} posts.`);
-        // **FIX:** Ensure all _id fields are strings before sending
-        const sanitizedPosts = postsArray.map(post => ({ ...post, _id: post._id.toString() }));
+        // **FIX:** Ensure each post has a 'likes' array and a string '_id'.
+        const sanitizedPosts = postsArray.map(post => {
+            return {
+                likes: [], // Default value
+                ...post,   // Spread the original post over the default
+                _id: post._id.toString() // Ensure _id is a string
+            };
+        });
         res.json(sanitizedPosts);
     } catch (error) {
         console.error('[GET /api/posts] Error:', error);
@@ -103,8 +110,14 @@ app.get('/api/posts/user/:username', async (req, res) => {
     try {
         const { username } = req.params;
         const postsArray = await postsCollection.find({ username: username }).sort({ timestamp: -1 }).toArray();
-        // **FIX:** Ensure all _id fields are strings before sending
-        const sanitizedPosts = postsArray.map(post => ({ ...post, _id: post._id.toString() }));
+        // **FIX:** Ensure each post has a 'likes' array and a string '_id'.
+        const sanitizedPosts = postsArray.map(post => {
+            return {
+                likes: [], // Default value
+                ...post,   // Spread the original post over the default
+                _id: post._id.toString() // Ensure _id is a string
+            };
+        });
         res.json(sanitizedPosts);
     } catch (error)
         {
@@ -156,7 +169,7 @@ app.post('/api/posts/:id/like', async (req, res) => {
         }
 
         let updateOperation;
-        if (post.likes.includes(username)) {
+        if (post.likes && post.likes.includes(username)) {
             updateOperation = { $pull: { likes: username } };
         } else {
             updateOperation = { $addToSet: { likes: username } };
