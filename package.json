@@ -1,6 +1,6 @@
 {
   "name": "old-school-mk",
-  "version": "1.0.0",
+  "version": "0.0.alpha-2",
   "description": "A retro-style social media site inspired by Elmore Plus.",
   "main": "server.js",
   "scripts": {

@@ -1,13 +1,14 @@
 /*
  * server.js
- * This file sets up the Node.js backend using the Express framework.
- * This version uses MongoDB for persistent data storage and includes a
- * more robust login/registration flow to prevent empty server responses.
+ * Version 0.0.alpha-2
+ * This version fixes a data serialization bug by ensuring all MongoDB ObjectIds
+ * are converted to strings and that all posts have a 'likes' array before being
+ * sent in the API response. This handles legacy data gracefully.
  */
 
 const express = require('express');
-const { MongoClient, ServerApiVersion } = require('mongodb');
-const path =require('path');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -21,16 +22,10 @@ if (!mongoUri) {
 }
 
 const client = new MongoClient(mongoUri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-    }
+    serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
 });
 
-let db;
-let usersCollection;
-let postsCollection;
+let db, usersCollection, postsCollection;
 
 async function connectDB() {
     try {
@@ -56,63 +51,78 @@ app.get('/api/config', (req, res) => {
     res.json({ apiKey: process.env.GEMINI_API_KEY });
 });
 
-// POST /api/login - Handles both login and registration
+// POST /api/login
 app.post('/api/login', async (req, res) => {
     try {
         const { username } = req.body;
         if (!username || username.length < 3) {
             return res.status(400).json({ message: 'Username must be at least 3 characters long.' });
         }
-
-        // Use a case-insensitive regex for the filter
         const filter = { username: { $regex: new RegExp(`^${username}$`, 'i') } };
-
         let user = await usersCollection.findOne(filter);
-
-        if (user) {
-            // User exists, return their data
-            res.status(200).json(user);
-        } else {
-            // User does not exist, create a new one
-            const newUserDocument = {
-                username: username,
-                following: []
-            };
+        if (!user) {
+            const newUserDocument = { username: username, following: [] };
             await usersCollection.insertOne(newUserDocument);
-            // Return the newly created user data
-            res.status(201).json(newUserDocument);
+            user = newUserDocument;
         }
+        res.status(200).json(user);
     } catch (error) {
         console.error('[POST /api/login] Error:', error);
         res.status(500).json({ message: 'Server failed during login/registration.' });
     }
 });
 
-
 // GET /api/users/:username
 app.get('/api/users/:username', async (req, res) => {
     try {
         const { username } = req.params;
         const user = await usersCollection.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
-        if (user) {
-            res.json(user);
-        } else {
-            res.status(404).json({ message: 'User not found' });
-        }
+        res.json(user);
     } catch (error) {
         console.error('[GET /api/users/:username] Error:', error);
         res.status(500).json({ message: 'Server error while fetching user.' });
     }
 });
 
-// GET /api/posts
+// GET /api/posts - Get all posts for the global feed
 app.get('/api/posts', async (req, res) => {
     try {
-        const posts = await postsCollection.find().sort({ timestamp: -1 }).toArray();
-        res.json(posts);
+        console.log("Attempting to fetch posts from database...");
+        const postsArray = await postsCollection.find().sort({ timestamp: -1 }).toArray();
+        console.log(`Successfully fetched ${postsArray.length} posts.`);
+        // **FIX:** Ensure each post has a 'likes' array and a string '_id'.
+        const sanitizedPosts = postsArray.map(post => {
+            return {
+                likes: [], // Default value
+                ...post,   // Spread the original post over the default
+                _id: post._id.toString() // Ensure _id is a string
+            };
+        });
+        res.json(sanitizedPosts);
     } catch (error) {
         console.error('[GET /api/posts] Error:', error);
         res.status(500).json({ message: 'Server error while fetching posts.' });
+    }
+});
+
+// GET /api/posts/user/:username
+app.get('/api/posts/user/:username', async (req, res) => {
+    try {
+        const { username } = req.params;
+        const postsArray = await postsCollection.find({ username: username }).sort({ timestamp: -1 }).toArray();
+        // **FIX:** Ensure each post has a 'likes' array and a string '_id'.
+        const sanitizedPosts = postsArray.map(post => {
+            return {
+                likes: [], // Default value
+                ...post,   // Spread the original post over the default
+                _id: post._id.toString() // Ensure _id is a string
+            };
+        });
+        res.json(sanitizedPosts);
+    } catch (error)
+        {
+        console.error('[GET /api/posts/user/:username] Error:', error);
+        res.status(500).json({ message: 'Server error while fetching user posts.' });
     }
 });
 
@@ -128,43 +138,76 @@ app.post('/api/posts', async (req, res) => {
             text,
             image: image || null,
             timestamp: new Date(),
+            likes: [],
         };
         const result = await postsCollection.insertOne(newPost);
-        res.status(201).json({ ...newPost, _id: result.insertedId });
+        // Ensure the returned post has a string ID
+        const createdPost = { ...newPost, _id: result.insertedId.toString() };
+        res.status(201).json(createdPost);
     } catch (error) {
         console.error('[POST /api/posts] Error:', error);
         res.status(500).json({ message: 'Server failed to create post.' });
     }
 });
 
+// POST /api/posts/:id/like
+app.post('/api/posts/:id/like', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ message: 'Username is required to like a post.' });
+        }
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid post ID format.' });
+        }
+
+        const post = await postsCollection.findOne({ _id: new ObjectId(id) });
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found.' });
+        }
+
+        let updateOperation;
+        if (post.likes && post.likes.includes(username)) {
+            updateOperation = { $pull: { likes: username } };
+        } else {
+            updateOperation = { $addToSet: { likes: username } };
+        }
+
+        const result = await postsCollection.findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            updateOperation,
+            { returnDocument: 'after' }
+        );
+
+        res.status(200).json(result.value);
+    } catch (error) {
+        console.error('[POST /api/posts/:id/like] Error:', error);
+        res.status(500).json({ message: 'Server error during like action.' });
+    }
+});
+
+
 // POST /api/follow
 app.post('/api/follow', async (req, res) => {
     try {
         const { follower, userToFollow } = req.body;
-        if (!follower || !userToFollow) {
-            return res.status(400).json({ message: 'Required fields missing.' });
-        }
-
         const followerUser = await usersCollection.findOne({ username: follower });
         if (!followerUser) {
-            return res.status(404).json({ message: 'Follower not found.' });
+             return res.status(404).json({ message: 'Follower user not found.' });
         }
-
         let updateOperation;
         if (followerUser.following.includes(userToFollow)) {
-            // Unfollow: remove from array
             updateOperation = { $pull: { following: userToFollow } };
         } else {
-            // Follow: add to array
-            updateOperation = { $addToSet: { following: userToFollow } }; // $addToSet prevents duplicates
+            updateOperation = { $addToSet: { following: userToFollow } };
         }
-
         const result = await usersCollection.findOneAndUpdate(
             { username: follower },
             updateOperation,
             { returnDocument: 'after' }
         );
-
         res.status(200).json(result.value);
     } catch (error) {
         console.error('[POST /api/follow] Error:', error);
