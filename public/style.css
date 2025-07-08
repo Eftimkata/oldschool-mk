@@ -1,7 +1,7 @@
 /*
  * style.css
- * Version 0.0.alpha-2
- * Adds styles for profile pages, like buttons, and other new UI elements.
+ * Version 0.0.3-alpha
+ * Adds styles for the new login/register form toggle.
  */
 
 :root {
@@ -52,7 +52,7 @@ h2 { font-family: var(--pixel-font); font-size: 1.5rem; color: var(--button-bg);
 .label-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
 label { display: block; font-weight: bold; color: var(--accent-color); }
 
-input[type="text"], input[type="url"], textarea {
+input[type="text"], input[type="password"], input[type="url"], textarea {
     width: 100%; padding: 10px; background-color: var(--primary-bg); border: 1px solid var(--border-color);
     border-radius: 4px; color: var(--text-color); font-family: var(--body-font); font-size: 1rem; box-sizing: border-box;
 }
@@ -78,6 +78,9 @@ input::placeholder, textarea::placeholder { color: #aaa; }
 .form-message { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; }
 .form-message.success { background-color: var(--success-color); color: var(--button-text); display: block; }
 .form-message.error { background-color: var(--error-color); color: var(--button-text); display: block; }
+
+.auth-toggle { text-align: center; margin-top: 20px; font-size: 1rem; }
+.auth-toggle a { color: var(--link-color); text-decoration: underline; cursor: pointer; }
 
 .feed-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
 .feed-toggle { display: flex; gap: 5px; }
