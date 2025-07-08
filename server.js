@@ -87,9 +87,11 @@ app.get('/api/users/:username', async (req, res) => {
 app.get('/api/posts', async (req, res) => {
     try {
         console.log("Attempting to fetch posts from database...");
-        const posts = await postsCollection.find().sort({ timestamp: -1 }).toArray();
-        console.log(`Successfully fetched ${posts.length} posts.`);
-        res.json(posts);
+        const postsArray = await postsCollection.find().sort({ timestamp: -1 }).toArray();
+        console.log(`Successfully fetched ${postsArray.length} posts.`);
+        // **FIX:** Ensure all _id fields are strings before sending
+        const sanitizedPosts = postsArray.map(post => ({ ...post, _id: post._id.toString() }));
+        res.json(sanitizedPosts);
     } catch (error) {
         console.error('[GET /api/posts] Error:', error);
         res.status(500).json({ message: 'Server error while fetching posts.' });
@@ -100,8 +102,10 @@ app.get('/api/posts', async (req, res) => {
 app.get('/api/posts/user/:username', async (req, res) => {
     try {
         const { username } = req.params;
-        const posts = await postsCollection.find({ username: username }).sort({ timestamp: -1 }).toArray();
-        res.json(posts);
+        const postsArray = await postsCollection.find({ username: username }).sort({ timestamp: -1 }).toArray();
+        // **FIX:** Ensure all _id fields are strings before sending
+        const sanitizedPosts = postsArray.map(post => ({ ...post, _id: post._id.toString() }));
+        res.json(sanitizedPosts);
     } catch (error)
         {
         console.error('[GET /api/posts/user/:username] Error:', error);
@@ -142,7 +146,6 @@ app.post('/api/posts/:id/like', async (req, res) => {
             return res.status(400).json({ message: 'Username is required to like a post.' });
         }
 
-        // Validate the ID format before creating an ObjectId
         if (!ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'Invalid post ID format.' });
         }
