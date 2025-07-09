@@ -386,8 +386,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const init = () => {
-        gumballifyBtn.disabled = true;
-        gumballifyBtn.title = "Connecting...";
+        // Ensure all elements exist before adding listeners to them
+        if (gumballifyBtn) {
+            gumballifyBtn.disabled = true;
+            gumballifyBtn.title = "Connecting...";
+        }
+        
         const savedUsername = localStorage.getItem('oldSchoolMKUsername');
         if (savedUsername) {
             showMainApp(savedUsername);
@@ -395,22 +399,41 @@ document.addEventListener('DOMContentLoaded', () => {
             showLoginView();
             setupAuthForm(false); // Set initial state to Login mode cleanly
         }
-        authForm.addEventListener('submit', handleAuthSubmit);
-        authToggleLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            authForm.reset(); // Reset form only when user explicitly toggles
-            setupAuthForm(!isRegisterMode);
-        });
+
+        if (authForm) {
+            authForm.addEventListener('submit', handleAuthSubmit);
+        }
+        if (authToggleLink) {
+            authToggleLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Don't reset the form, just toggle the mode
+                setupAuthForm(!isRegisterMode);
+            });
+        }
         if (forgotPasswordLink) {
             forgotPasswordLink.addEventListener('click', handleForgotPassword);
         }
-        postForm.addEventListener('submit', handlePostSubmit);
-        logoutBtn.addEventListener('click', showLoginView);
-        timelineFeed.addEventListener('click', handleTimelineClick);
-        globalFeedBtn.addEventListener('click', () => handleFeedTypeToggle('global'));
-        followedFeedBtn.addEventListener('click', () => handleFeedTypeToggle('followed'));
-        backToFeedBtn.addEventListener('click', showFeedView);
-        gumballifyBtn.addEventListener('click', handleGumballifyClick);
+        if (postForm) {
+            postForm.addEventListener('submit', handlePostSubmit);
+        }
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', showLoginView);
+        }
+        if (timelineFeed) {
+            timelineFeed.addEventListener('click', handleTimelineClick);
+        }
+        if (globalFeedBtn) {
+            globalFeedBtn.addEventListener('click', () => handleFeedTypeToggle('global'));
+        }
+        if (followedFeedBtn) {
+            followedFeedBtn.addEventListener('click', () => handleFeedTypeToggle('followed'));
+        }
+        if (backToFeedBtn) {
+            backToFeedBtn.addEventListener('click', showFeedView);
+        }
+        if (gumballifyBtn) {
+            gumballifyBtn.addEventListener('click', handleGumballifyClick);
+        }
     };
 
     init();
