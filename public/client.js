@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authToggleText = document.getElementById('auth-toggle-text');
     const authToggleLink = document.getElementById('auth-toggle-link');
     const forgotPasswordLink = document.getElementById('forgot-password-link');
+    const forgotPasswordContainer = document.getElementById('forgot-password-container');
     const postForm = document.getElementById('post-form');
     const timelineFeed = document.getElementById('timeline-feed');
     const formMessage = document.getElementById('form-message');
@@ -195,6 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
             authToggleLink.textContent = 'Login';
             emailFormGroup.classList.remove('hidden');
             authEmailInput.required = true;
+            if (forgotPasswordContainer) forgotPasswordContainer.classList.add('hidden');
         } else {
             authTitle.textContent = 'Login';
             authSubmitBtn.textContent = 'Login';
@@ -202,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
             authToggleLink.textContent = 'Register';
             emailFormGroup.classList.add('hidden');
             authEmailInput.required = false;
+            if (forgotPasswordContainer) forgotPasswordContainer.classList.remove('hidden');
         }
     };
 
@@ -398,7 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
             authForm.reset(); // Reset form only when user explicitly toggles
             setupAuthForm(!isRegisterMode);
         });
-        forgotPasswordLink.addEventListener('click', handleForgotPassword);
+        if (forgotPasswordLink) {
+            forgotPasswordLink.addEventListener('click', handleForgotPassword);
+        }
         postForm.addEventListener('submit', handlePostSubmit);
         logoutBtn.addEventListener('click', showLoginView);
         timelineFeed.addEventListener('click', handleTimelineClick);
