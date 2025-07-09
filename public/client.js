@@ -1,7 +1,8 @@
 /*
  * client.js
  * Version 0.0.3-alpha
- * Implements the new login/registration flow with password support.
+ * Implements the new login/registration flow with password and email support.
+ * Adds the client-side logic for the "Forgot Password" feature.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let profileUsername = '';
     let currentFeedType = 'global';
     let geminiApiKey = null;
-    let isRegisterMode = false; // To track if the auth form is for login or register
+    let isRegisterMode = false;
 
     // --- DOM Element References ---
     const loginView = document.getElementById('login-view');
@@ -20,11 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const authForm = document.getElementById('auth-form');
     const authUsernameInput = document.getElementById('auth-username');
     const authPasswordInput = document.getElementById('auth-password');
+    const authEmailInput = document.getElementById('auth-email');
+    const emailFormGroup = document.getElementById('email-form-group');
     const authMessage = document.getElementById('auth-message');
     const authTitle = document.getElementById('auth-title');
     const authSubmitBtn = document.getElementById('auth-submit-btn');
     const authToggleText = document.getElementById('auth-toggle-text');
     const authToggleLink = document.getElementById('auth-toggle-link');
+    const forgotPasswordLink = document.getElementById('forgot-password-link');
     const postForm = document.getElementById('post-form');
     const timelineFeed = document.getElementById('timeline-feed');
     const formMessage = document.getElementById('form-message');
@@ -70,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 element.className = 'form-message';
                 element.textContent = '';
             }
-        }, 4000);
+        }, 5000);
     };
 
     const formatTimestamp = (isoString) => new Date(isoString).toLocaleString('en-US', {
@@ -81,19 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const postCard = document.createElement('div');
         postCard.className = 'post-card';
         postCard.dataset.postId = post._id;
-
         const isOwnPost = post.username === currentUser;
         const isFollowing = followingList.includes(post.username);
-        const hasLiked = post.likes.includes(currentUser);
-
-        const followButtonHtml = isOwnPost ? '' : `
-            <button class="btn-follow ${isFollowing ? 'following' : ''}" data-username="${post.username}">
-                ${isFollowing ? 'Following' : 'Follow'}
-            </button>`;
-
+        const hasLiked = post.likes && post.likes.includes(currentUser);
+        const followButtonHtml = isOwnPost ? '' : `<button class="btn-follow ${isFollowing ? 'following' : ''}" data-username="${post.username}">${isFollowing ? 'Following' : 'Follow'}</button>`;
         const safeText = document.createElement('p');
         safeText.textContent = post.text;
-
         postCard.innerHTML = `
             <div class="post-header">
                 <div class="post-user-info">
@@ -111,30 +108,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="like-icon">♥</span>
                     <span class="like-text">${hasLiked ? 'Liked' : 'Like'}</span>
                 </button>
-                <span class="like-count">${post.likes.length}</span>
-            </div>
-        `;
+                <span class="like-count">${post.likes ? post.likes.length : 0}</span>
+            </div>`;
         return postCard;
     };
 
     const fetchAndRenderPosts = async () => {
         timelineFeed.innerHTML = '<div class="loading-spinner"></div>';
         try {
-            let url;
-            if (currentView === 'profile') {
-                url = `/api/posts/user/${profileUsername}`;
-            } else {
-                url = '/api/posts';
-            }
-
+            let url = (currentView === 'profile') ? `/api/posts/user/${profileUsername}` : '/api/posts';
             const response = await fetch(url);
             if (!response.ok) throw new Error('Could not fetch posts.');
             let posts = await response.json();
-
             if (currentView === 'feed' && currentFeedType === 'followed') {
                 posts = posts.filter(post => followingList.includes(post.username) || post.username === currentUser);
             }
-
             timelineFeed.innerHTML = '';
             if (posts.length === 0) {
                 timelineFeed.innerHTML = `<p>Nothing to see here!</p>`;
@@ -146,8 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
             timelineFeed.innerHTML = '<p style="color: var(--error-color);">Could not load the feed.</p>';
         }
     };
-
-    // --- View Management ---
 
     const showMainApp = async (username) => {
         currentUser = username;
@@ -175,8 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mainAppView.classList.add('hidden');
         headerUserControls.classList.add('hidden');
         loginView.classList.remove('hidden');
-        authUsernameInput.value = '';
-        authPasswordInput.value = '';
+        authForm.reset();
         gumballifyBtn.disabled = true;
     };
 
@@ -207,35 +192,63 @@ document.addEventListener('DOMContentLoaded', () => {
             authSubmitBtn.textContent = 'Register';
             authToggleText.textContent = 'Already have an account?';
             authToggleLink.textContent = 'Login';
+            emailFormGroup.classList.remove('hidden');
+            authEmailInput.required = true;
         } else {
             authTitle.textContent = 'Login';
             authSubmitBtn.textContent = 'Login';
             authToggleText.textContent = 'Need an account?';
             authToggleLink.textContent = 'Register';
+            emailFormGroup.classList.add('hidden');
+            authEmailInput.required = false;
         }
     };
-
-    // --- Event Handlers ---
 
     const handleAuthSubmit = async (event) => {
         event.preventDefault();
         const username = authUsernameInput.value.trim();
         const password = authPasswordInput.value.trim();
         const endpoint = isRegisterMode ? '/api/register' : '/api/login';
-
+        const body = { username, password };
+        if (isRegisterMode) {
+            body.email = authEmailInput.value.trim();
+        }
         try {
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify(body),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message);
-            
+            if (isRegisterMode) {
+                toggleAuthMode();
+                showMessage(authMessage, "Registration successful! Please log in.", "success");
+                return;
+            }
             localStorage.setItem('oldSchoolMKUsername', data.username);
             await showMainApp(data.username);
         } catch (error) {
             showMessage(authMessage, error.message, 'error');
+        }
+    };
+
+    const handleForgotPassword = async (event) => {
+        event.preventDefault();
+        const email = prompt("Please enter the email address for your account:");
+        if (!email) return;
+
+        try {
+            const response = await fetch('/api/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email }),
+            });
+            const data = await response.json();
+            // Show the server's message, whether it's a success or an error.
+            showMessage(authMessage, data.message, response.ok ? 'success' : 'error');
+        } catch (error) {
+            showMessage(authMessage, 'Could not connect to the server. Please try again.', 'error');
         }
     };
 
@@ -265,8 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleTimelineClick = (event) => {
         const target = event.target;
         if (target.matches('.post-username')) {
-            const username = target.dataset.username;
-            showProfileView(username);
+            showProfileView(target.dataset.username);
         } else if (target.closest('.btn-follow')) {
             handleFollowClick(target.closest('.btn-follow'));
         } else if (target.closest('.btn-like')) {
@@ -308,14 +320,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (!response.ok) throw new Error('Failed to like post.');
             const updatedPost = await response.json();
-            
             const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
             if (postCard) {
                 const likeButton = postCard.querySelector('.btn-like');
                 const likeCount = postCard.querySelector('.like-count');
                 const likeText = postCard.querySelector('.like-text');
                 const hasLiked = updatedPost.likes.includes(currentUser);
-
                 likeButton.classList.toggle('liked', hasLiked);
                 likeText.textContent = hasLiked ? 'Liked' : 'Like';
                 likeCount.textContent = updatedPost.likes.length;
@@ -377,12 +387,15 @@ document.addEventListener('DOMContentLoaded', () => {
             showMainApp(savedUsername);
         } else {
             showLoginView();
+            toggleAuthMode(); // Start in register mode
+            toggleAuthMode(); // Toggle back to login mode to set initial state
         }
         authForm.addEventListener('submit', handleAuthSubmit);
         authToggleLink.addEventListener('click', (e) => {
             e.preventDefault();
             toggleAuthMode();
         });
+        forgotPasswordLink.addEventListener('click', handleForgotPassword);
         postForm.addEventListener('submit', handlePostSubmit);
         logoutBtn.addEventListener('click', showLoginView);
         timelineFeed.addEventListener('click', handleTimelineClick);
