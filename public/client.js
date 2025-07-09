@@ -1,8 +1,8 @@
 /*
  * client.js
  * Version 0.0.3-alpha
- * Implements the new login/registration flow with password and email support.
- * Adds the client-side logic for the "Forgot Password" feature.
+ * This version fixes a major bug in the login/registration form where input
+ * fields would clear unexpectedly. The form state management is now more robust.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -183,10 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await fetchAndRenderPosts();
     };
 
-    const toggleAuthMode = () => {
-        isRegisterMode = !isRegisterMode;
-        authForm.reset();
+    const setupAuthForm = (isRegister) => {
+        isRegisterMode = isRegister;
         authMessage.className = 'form-message';
+        authMessage.textContent = '';
+
         if (isRegisterMode) {
             authTitle.textContent = 'Register';
             authSubmitBtn.textContent = 'Register';
@@ -221,11 +222,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message);
+
             if (isRegisterMode) {
-                toggleAuthMode();
+                authForm.reset();
+                setupAuthForm(false);
                 showMessage(authMessage, "Registration successful! Please log in.", "success");
                 return;
             }
+
             localStorage.setItem('oldSchoolMKUsername', data.username);
             await showMainApp(data.username);
         } catch (error) {
@@ -245,7 +249,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ email }),
             });
             const data = await response.json();
-            // Show the server's message, whether it's a success or an error.
             showMessage(authMessage, data.message, response.ok ? 'success' : 'error');
         } catch (error) {
             showMessage(authMessage, 'Could not connect to the server. Please try again.', 'error');
@@ -387,13 +390,13 @@ document.addEventListener('DOMContentLoaded', () => {
             showMainApp(savedUsername);
         } else {
             showLoginView();
-            toggleAuthMode(); // Start in register mode
-            toggleAuthMode(); // Toggle back to login mode to set initial state
+            setupAuthForm(false); // Set initial state to Login mode cleanly
         }
         authForm.addEventListener('submit', handleAuthSubmit);
         authToggleLink.addEventListener('click', (e) => {
             e.preventDefault();
-            toggleAuthMode();
+            authForm.reset(); // Reset form only when user explicitly toggles
+            setupAuthForm(!isRegisterMode);
         });
         forgotPasswordLink.addEventListener('click', handleForgotPassword);
         postForm.addEventListener('submit', handlePostSubmit);
